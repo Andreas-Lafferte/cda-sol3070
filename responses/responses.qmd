@@ -1,0 +1,40 @@
+---
+title: "Expert advice from experts"
+format: 
+  pdf:
+    documentclass: article
+    include-in-header: "header.tex"
+link-citations: true
+linestretch: 1.15       
+mainfont: Times New Roman
+fontsize: 12pt          
+geometry: "left=2.54cm,right=2.54cm,top=2.54cm,bottom=2.54cm"
+papersize: letter
+colorlinks: true
+fig-height: 4
+fig-width: 7.5
+header-includes:
+  - \usepackage{threeparttable}
+---
+
+# Introduction
+
+In a famous paper, @BC64 introduced a family of transformations \dots
+
+```{r}
+#| label: fig-density
+#| fig-cap: Simulated data from a N(0,1) distribution.
+library(tidyverse)
+set.seed(2022-12-20)
+df <- tibble(x = rnorm(200))
+df |>
+  ggplot(aes(x=x)) +
+  geom_density(bw = "SJ") +
+  geom_rug()
+```
+
+@fig-density shows a kernel density estimate of simulated data from a N(0,1) distribution. The sample variance is given by
+$$
+  s^2 = \frac{1}{n-1} \sum_{i=1}^n (x_i-\bar{x})^2 = `r round(sd(df$x), 2)`.
+$$ {#eq-s2}
+Note that @eq-s2 is an unbiased estimate of the variance, but it is not the maximum likelihood estimate [@Rice2007, p.269].
