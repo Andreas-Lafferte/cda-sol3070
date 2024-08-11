@@ -1,7 +1,8 @@
 ---
 title: "**Tarea Corta Nº1**"
 author: "Estudiante [Andreas Laffert](mailto:alaffertt@estudiante.uc.cl)"
-date: "12-08-2024"
+date-format: full
+date: 08/12/2024 
 format: 
   pdf:
     documentclass: article
@@ -48,13 +49,17 @@ rm(list = ls())
 
 **Problema 1:** Simplifica: $\ln(x) + \ln(y)$
 
-Respuesta 1: $\ln xy$ → _Regla del producto_
+Respuesta 1: 
+
+$\ln(x) + \ln(y)$ = $\ln xy$ → _Regla del producto_
 
 <br>
 
 **Problema 2:** Simplifica: $\ln(b^3)$
 
-Respuesta 2: $3 \ln b$ → _Regla de la potencia_
+Respuesta 2:
+
+$\ln(b^3)$ = $3 \ln b$ → _Regla de la potencia_
 
 
 <br>
@@ -75,8 +80,9 @@ $2^y \times 2^{y-3} = 16$
  
   $2y = 7$
  
-  $y = 7/2 = 3,5$
+  $y = \frac{7}{2}$
 
+  $y = 3,5$
 
 <br>
 
@@ -84,14 +90,8 @@ $2^y \times 2^{y-3} = 16$
 
 Respuesta 4: 
 
-$e^{a}\times e^{-a}$
+$e^{a}\times e^{-a}$ = $e^{a + -a}$ = $e^0$ = $1$
  
-  $e^{a + -a}$
- 
-  $e^0$
- 
-  $1$
-  
 
 <br>
 
@@ -111,9 +111,7 @@ $z = e^{\ln(w)}$
 
 Respuesta 6: 
 
-$\ln(d) - \ln$ =
- 
-  $\ln(d/f)$
+$\ln(d) - \ln(f)$ = $\ln(\frac{d}{f})$
   
 <br>
 
@@ -127,20 +125,21 @@ $e^{3y} = 10$
   
   $3y = \ln(10)$ → _Usamos propiedad de $e^{\ln(x)} = x$_
   
-  $y = \ln(10)/3$
+  $y = \frac{\ln(10)}{3}$
   
 <br>
 
 **Problema 8:** Simplifica: $\ln(p) + \ln(q) - \ln(r)$
 
 Respuesta 8: 
+
 $\ln(p) + \ln(q) - \ln(r)$
 
   $\ln(p) + \ln(q) = \ln(p \times q)$ 
 
   $\ln(p \times q) - \ln(r)$
   
-  $\ln(p \times q/r)$
+  $\ln(\frac{p \times q}{r})$
 
 <br>
 
@@ -156,7 +155,7 @@ $y = e^{3x+2}$
   
   $3x = \ln(y) - 2$
   
-  $x = \ln(y) - 2/3$
+  $x = \ln(y) - \frac{2}{3}$
   
   
   
@@ -177,7 +176,7 @@ Así,
 
 La derivada de $y$ respecto a $x$ =
 
-$$dy/dx = 12x^2 - 12x + 5$$
+$$\frac{dy}{dx} = 12x^2 - 12x + 5$$
 
 
 <br>
@@ -200,7 +199,7 @@ Así,
 
 La derivada de $y$ respecto a $x$ =
 
-$$dy/dx = 6x^5 - 12x^3 + 6x^2 - 1$$
+$$\frac{dy}{dx} = 6x^5 - 12x^3 + 6x^2 - 1$$
 
 <br>
 
@@ -215,21 +214,23 @@ $$dy/dx = 6x^5 - 12x^3 + 6x^2 - 1$$
 
 Respuesta 12:
 
-1. La @fig-fun muestra el gráfico de la función $y = 4 + 3x^2$, cuya forma es la de una parabóla.
+1. La @fig-fun muestra el gráfico de la función $y = 4 + 3x^2$, cuya forma es la de una parábola.
 
 ```{r}
 #| fig-cap: "Gráfico de la función"
 #| label: fig-fun
 
 x <- seq(-5, 5, length.out = 400)
-y <- 4 + 3 * x^2
+y <- (4 + 3 * x^2)
 
 data.frame(x = x, y = y) %>% 
   ggplot(aes(x = x, y = y)) +
   geom_line(color = "brown") +
   geom_hline(yintercept = 0, color = "black", linetype = "dashed") +
   geom_vline(xintercept = 0, color = "black", linetype = "dashed") +
-  labs(x = "x", y = "y") +
+  labs(
+    x = "Eje X", 
+    y = "Eje Y") +
   theme_ggdist()
 
 ```
@@ -242,9 +243,9 @@ data.frame(x = x, y = y) %>%
 
   $y = 4 + 3x^2$
   
-  $dy/dx = 6x$
+  $\frac{dy}{dx} = 6x$
   
-  $dy/dx = 6x = 6 \times 0 = 0$
+  $\frac{dy}{dx} = 6x = 6 \times 0 = 0$
   
 Con todo, la pendiente en el punto mínimo es $0$
 
