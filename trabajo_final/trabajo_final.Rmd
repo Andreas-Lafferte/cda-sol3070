@@ -1,0 +1,501 @@
+---
+title: |
+ | \vspace{3cm} Elementos diferenciadores en el acceso a centros de salud para personas LGBTQ+
+subtitle: | 
+ | \vspace{2cm}
+ Análisis de Datos Categóricos - SOL3070
+date: "`r Sys.setlocale('LC_TIME', 'es_ES.UTF-8'); format(Sys.Date(), '%A %d, %B %Y')`"
+author: | 
+ | Estudiantes: Catalina Herrera, Trajan Pirkovic y Andreas Laffert
+ | Profesor Mauricio Bucca
+ | Ayudante Roberto Cantillan
+ | \vspace{6cm}
+output:
+  bookdown::pdf_document2:
+    template: null
+    toc: false
+    keep_tex: true
+    number_sections: false
+bibliography: ../input/bib/magister.bib     
+csl: ../input/bib/apa6.csl    
+linkcolor: DarkSlateBlue
+urlcolor: DarkSlateBlue
+linestretch: '1.15'
+link-citations: yes
+fontsize: 12pt
+papersize: a4
+geometry: "left=2.54cm,right=2.54cm,top=2.54cm,bottom=2.54cm"
+lang: en
+fig-height: 4
+fig-width: 7.5
+header-includes:
+  - \usepackage{titling}
+  - \pretitle{\begin{center}\LARGE\includegraphics[width=7cm]{../img/logo_isuc.png}\\[\bigskipamount]}
+  - \posttitle{\end{center}}
+  - \usepackage{times}           
+  - \usepackage{caption}
+  - \usepackage{floatrow} 
+  - \usepackage{float}
+  - \floatsetup[figure]{capposition=top}
+  - \floatsetup[table]{capposition=top}
+  - \floatplacement{figure}{H}
+  - \floatplacement{table}{h}
+  - \usepackage{graphicx}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{fancyhdr}
+  - \fancyhead{} 
+  - \usepackage{threeparttable}
+editor_options: 
+  chunk_output_type: console
+---
+
+\pagebreak
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      warning = F,
+                      error = F, 
+                      message = F) 
+```
+
+```{r paquetes, include=FALSE}
+
+if (!require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse,
+               sjlabelled, 
+               kableExtra,
+               summarytools,
+               here,
+               naniar,
+               haven,
+               texreg,
+               modelr,
+               ggdist,
+               ggpubr,
+               performance,
+               DescTools)
+
+options(scipen=999)
+rm(list = ls())
+```
+
+```{r funciones, include=FALSE}
+
+options(knitr.kable.NA = "")
+options(knitr.table.format="latex")
+
+theme_set(theme_ggdist())
+```
+
+```{r datos, include=FALSE}
+load(file = here("output/base_proc.RData"))
+```
+
+```{r analysis, include=FALSE}
+
+m1 <- glm(asistencia ~ 1 + lgbt, family = binomial(link = "logit"), 
+          data = base_proc) 
+
+m2 <- glm(asistencia ~ 1 + lgbt + n_educ, family = binomial(link = "logit"), 
+          data = base_proc) 
+
+m3 <- glm(asistencia ~ 1 + lgbt + n_educ + nacionalidad, family = binomial(link = "logit"), 
+          data = base_proc) 
+
+m4 <- glm(asistencia ~ 1 + lgbt + n_educ + nacionalidad*lgbt, family = binomial(link = "logit"), 
+          data = base_proc) 
+
+m5 <- glm(asistencia ~ 1 + lgbt + n_educ + nacionalidad*lgbt + 
+            sexo + edad + dau + depen_grado + disc_wg, family = binomial(link = "logit"), 
+          data = base_proc) 
+
+
+bs <- function(x) {
+  df <- as.data.frame(x)
+  
+  df <- df %>%
+    mutate(
+      n_educ = as.numeric(n_educ),
+      disc_wg = as.numeric(disc_wg),
+      depen_grado = as.numeric(depen_grado),
+      dau = as.numeric(dau),
+      nacionalidad = as.numeric(nacionalidad),
+      sexo = as.numeric(sexo),
+      lgbt = as.numeric(lgbt)
+    )
+  
+  # Crear grid de predicción
+  grid <- df %>%
+    data_grid(
+      lgbt = unique(lgbt),
+      n_educ = n_educ,
+      nacionalidad = unique(nacionalidad),
+      sexo = unique(sexo),
+      edad = median(edad, na.rm = TRUE),
+      dau = median(dau, na.rm = TRUE),
+      depen_grado = unique(depen_grado),
+      disc_wg = median(disc_wg, na.rm = TRUE)
+    )
+  
+  # Modelos ajustados
+  lpm <- lm(asistencia ~ 1 + lgbt + n_educ + nacionalidad * lgbt + sexo + edad + dau + depen_grado + disc_wg, data = df)
+  
+  logistic <- glm(asistencia ~ 1 + lgbt + n_educ + nacionalidad * lgbt + sexo + edad + dau + depen_grado + disc_wg, 
+                  family = "binomial", data = df)
+  
+  # Agregar predicciones al grid
+  grid <- grid %>%
+    mutate(
+      lpm = predict(lpm, newdata = grid),
+      logistic = predict(logistic, newdata = grid, type = "response")
+    )
+  
+  return(grid)
+}
+
+grid <- base_proc %>% 
+  bootstrap(500) %>% 
+  mutate(pred = map(strap, ~ bs(.x))) %>% 
+  dplyr::select(.id, pred) %>% 
+  unnest()
+
+
+grid2 <- grid %>% 
+  pivot_longer(cols = -c(.id, lgbt, n_educ, nacionalidad, sexo, 
+                         edad, dau, depen_grado, disc_wg), 
+               names_to="model",
+               values_to="asistencia_hat") %>%
+  mutate(lgbt = if_else(lgbt == 1, "No LGBT", "LGBT"),
+         lgbt = factor(lgbt, levels = c("No LGBT", "LGBT")),
+         nacionalidad = if_else(nacionalidad == 1, "Chileno", "No chileno"),
+  ) 
+
+
+```
+
+
+# Introducción
+
+Las personas LGBTQ+ enfrentan disparidades significativas en el acceso a la atención médica en comparación con la población heterosexual y cisgénero [@lampe2024health]. Estas desigualdades tienen múltiples causas interrelacionadas, que afectan negativamente su salud y bienestar. Uno de los factores más influyentes es el temor a la discriminación, que lleva a muchas personas LGBTQ+ a evitar buscar atención médica. Este temor resulta no ser infundado, ya que se basa en experiencias previas de discriminación en entornos sanitarios y en la percepción de que los proveedores de salud carecen de sensibilidad y una formación adecuada para atender sus necesidades específicas [@alencar2016access; @lim2014addressing].
+
+Además, la falta de información específica sobre los servicios de salud disponibles para las personas LGBTQ+ contribuye a su exclusión sanitaria. Este problema surge, en parte, de la escasa difusión de recursos dirigidos a esta población, lo que dificulta que las personas identifiquen servicios adecuados para sus necesidades particulares [@lampe2024health]. Esta carencia se ve exacerbada por el trato discriminatorio que pueden recibir en los centros de salud, donde las actitudes heteronormativas y los prejuicios de los profesionales de la salud crean entornos hostiles e inseguros. Estas experiencias negativas, a su vez, disuaden a las personas LGBTQ+ de buscar atención médica o de seguir las recomendaciones terapéuticas, perpetuando un ciclo de exclusión y desatención [@alencar2016access]-
+
+El acceso limitado a los servicios de salud en esta comunidad también puede estar condicionado por factores socioeconómicos, como el nivel educativo y los ingresos, así como la nacionalidad, lo que introduce barreras adicionales relacionadas con el conocimiento sobre la legalidad y la administración de los sistemas sanitarios [@fletcher2009higher; @cabieses2020health].
+
+Debido a lo anterior, las personas LGBTQ+ enfrentan barreras estructurales y sociales en el acceso a la atención médica, lo que representa una violación significativa a sus derechos humanos y exacerba las desigualdades de salud [@lampe2024health]. Estas barreras no solo dificultan el acceso a servicios esenciales, sino que también intensifican las vulnerabilidades frente a una serie de condiciones médicas.
+
+Además de las barreras asociadas a la orientación sexual o la identidad de género, factores socioeconómicos como el nivel educacional y el ingreso económico desempeñan un papel crítico en el acceso a la atención médica. Las personas con menor educación e ingresos enfrentan mayores dificultades para acceder a servicios de calidad, lo que refuerza las desigualdades en salud. De manera similar, las personas de otras nacionalidades, independientemente de su orientación sexual, se encuentran con obstáculos adicionales, como diferencias culturales, barreras idiomáticas, estatus migratorio irregular y la falta de seguro médico, que complican su inclusión en los sistemas de salud [@cabieses2020health].
+
+Dado lo anterior, la pregunta que guía este trabajo es: ¿Cuáles son los factores que explican la asistencia a centros de salud por parte de la comunidad LGBTQ+ en Chile? El objetivo de este estudio es identificar cómo ciertos factores sociodemográficos e identitarios influyen en la asistencia a centros de salud por parte de la comunidad LGBTQ+ en Chile.
+
+A partir de la evidencia previa, se desprenden tres hipótesis que guían este estudio:
+
+$H_1$: Personas LGBTQ+ tendrán una menor probabilidad de asistir a centros de salud, en comparación con personas heterosexuales cisgénero.
+
+$H_2$: Personas con menor nivel educativo tendrán menor probabilidad de asistir a centros de salud, en comparación con personas mayor nivel educativo.
+
+$H_3$: Personas LGBTQ+ de nacionalidad distinta a la chilena tendrán menor probabilidad de asistir a centros de salud, en comparación con personas heterosexuales cisgénero de nacionalidad chilena.
+
+
+
+# Metodología
+
+## Datos
+
+Este estudio se basa en la información proporcionada por la base de datos de la Encuesta de Caracterización Socioeconómica Nacional (CASEN) en su versión del año 2022 (N = 202.231), desarrollada por el Ministerio de Desarrollo Social y Familia. Esta base de datos se sustenta en la aplicación de cuestionarios presenciales asistidos mediante dispositivos móviles. El diseño muestral complejo es de tipo probabilístico, estratificado, por conglomerados y bietápico. La población objetivo son los hogares que habitan viviendas particulares ocupadas y sus residentes habituales en Chile. Las unidades de análisis son las personas y los hogares encuestados en las 16 regiones del país en zonas tanto urbanas como rurales. Luego del procesamiento de variables y de la eliminación de casos perdidos, la base de datos final de este estudio incluye una muestra de 17.226 casos.
+
+
+## Variables
+
+**Variable dependiente**
+
+La variable dependiente de este estudio es la asistencia a centros de salud por enfermedad o accidente. Este constructo se mide a través del ítem: «¿Tuvo alguna consulta o atención médica por esa enfermedad o accidente?», el cual responden solo aquellos encuestados que afirmaron haber tenido problemas de salud, enfermedad o accidente en los últimos tres meses. Las categorías de respuesta de la variable asistencia a centros de salud son “Sí” (1) y “No” (2), resultando en una variable nominal binaria o dummy. En la Tabla 1 se muestran los estadísticos descriptivos de todas las variables incluidas en el análisis.
+
+
+```{r table1, results='asis'}
+#| tbl-cap: "Dependent variables"
+
+library(summarytools)
+
+dependientes <- base_proc %>% 
+  dplyr::select(asistencia, lgbt, n_educ, nacionalidad, sexo, edad, dau, depen_grado, disc_wg) %>% 
+  mutate(asistencia = if_else(asistencia == 1, "Asiste", "No asiste"),
+         asistencia = factor(asistencia, levels = c("No asiste", "Asiste")))
+
+
+dependientes$asistencia <- sjlabelled::set_label(dependientes$asistencia, "Asistencia centros de salud")
+
+dependientes$lgbt <- sjlabelled::set_label(dependientes$lgbt, "LGBTQ+")
+
+dependientes$n_educ <- sjlabelled::set_label(dependientes$n_educ, "Nivel educacional")
+
+dependientes$nacionalidad <- sjlabelled::set_label(dependientes$nacionalidad, "Nacionalidad")
+
+dependientes$sexo <- sjlabelled::set_label(dependientes$sexo, "Sexo")
+
+
+dependientes$disc_wg <- sjlabelled::set_label(dependientes$disc_wg, "Discapacidad")
+
+dependientes$depen_grado <- sjlabelled::set_label(dependientes$depen_grado, "Grado de dependencia")
+
+df<-dfSummary(dependientes,
+               plain.ascii = FALSE,
+               style = "multiline",
+               tmp.img.dir = "/tmp",
+               graph.magnif = 0.75,
+               headings = F,  # encabezado
+               varnumbers = F, # num variable
+               labels.col = T, # etiquetas
+               na.col = F,    # missing
+               graph.col = F, # plot
+               valid.col = T, # n valido
+               col.widths = c(30,10,10,10))
+
+df$Variable <- NULL # delete variable column
+
+print(df)
+
+```
+
+
+**Variables independientes**
+
+
+Las identidades LGBTQ+ se miden a partir de una variable dummy construida en base a dos preguntas: «¿Cuál de estas alternativas define su orientación sexual?» y «Con qué género se identifica?». Este constructo considera aquellas personas identificadas como Gay, Lesbiana, Bisexual u otra orientación sexual. Mientras que la segunda pregunta considera las categorías hombre, mujer, transmasculino, transfemenino, no binario y otro género. Así, la variable LBGTQ+ resultante tiene las siguientes categorías de respuesta: 1 = "Sí" (personas que declaran tener una orientación sexual distinta a la heterosexual y/o se declara como género transmasculino, transfemenino o no binario) y 2 = "No" (personas que se declaran hombre o mujer y son heterosexuales). 
+
+
+El nivel educacional de los encuestados se mide a partir del máximo nivel educacional alcanzado. En detalle, este constructo se operacionaliza a partir del ítem «¿Cuál es el nivel educacional al que asiste o el más alto al cual asistió?». Sus valores de respuesta fueron recodificados en 7 categorías: “Sin Educación Formal” (1), “Básica Incompleta” (2),  “Básica Completa” (3), “Media Incompleta” (4), “Media Completa” (5), “Superior Incompleta” (6), “Superior Completa” (7), resultando en una variable ordinal. 
+
+La nacionalidad de los encuestados se mide a través de una variable dummy que define el lugar de nacimiento de las personas. Esto se operacionaliza a partir del ítem «¿En qué comuna o país vivía su madre?», cuyos valores de respuesta son “Nacido/a en Chile” (0) y “Nacido/a fuera de Chile” (1). 
+
+Se incluyen una serie de variables para controlar efectos de composición de la población. Primero, características socioeconómicas de los encuestados como la edad (en años), el sexo (dummy: 0 = hombre, 1 = mujer) y el ingreso (en deciles) son incorporadas en los modelos. Segundo, características de comorbilidades asociadas son incluidas para capturar posibles efectos de condiciones de salud, como el grado de discapacidad (dummy: 0 = Sin discapacidad, 1 = Con discapacidad) y el nivel de dependencia para realizar tareas cotidianas (1 = Sin dependencia, 2 = Dependencia leve, 3 = Dependencia moderada, 4 = Dependencia severa). 
+
+## Métodos
+
+Para responder a las hipótesis y pregunta de investigación, se estiman modelos de regresión logísticos. La razón principal es que estos modelos permiten estimar como un conjunto de factores sociodemográficos e identitarios influyen en la probabilidad de asistir a centros de salud. Los modelos logísticos son particularmente adecuados cuando la variable dependiente es categórica y binaria, ya que permiten modelar la relación no lineal entre los predictores y la probabilidad de ocurrencia de un evento, respetando las restricciones de las probabilidades al intervalo [0,1] [@hosmer2013applied]. Además, ofrecen interpretaciones intuitivas a través de los odds y odds ratios, facilitando la comparación de efectos entre grupos [@agresti2018introduction].
+
+
+**Configuración formal del modelo:**
+
+**1. Componente aleatorio:** La variable dependiente $Y_i$ se modela como una variable aleatoria con distribución Bernoulli, $Y_i \sim Bernoulli(p_i)$, donde $p_i= P (Y_i = 1)$ representa la probabilidad de asistir a un centro de salud.
+
+
+**2. Componente sistemático:** El modelo vincula la probabilidad $pi$ con un conjunto de predictores $X_i$ a través de un predictor lineal $\eta$ definido como:
+
+$$
+\eta_i = \beta_0 + \beta_1 \text{LGBT}_i + \beta_2 \text{educacion}_i + \beta_3 \text{nacionalidad}_i + \beta_4 (\text{LGBT}_i \times \text{nacionalidad}_i),
+$$  
+donde: 
+
+- $\beta_0$: Intercepto del modelo,  
+- $\text{LGBT}_i$: Variable indicadora de orientación sexual o identidad de género,  
+- $\text{educacion}_i$: Nivel educativo,  
+- $\text{nacionalidad}_i$: Nacionalidad,  
+- $(\text{LGBT}_i \times \text{nacionalidad}_i)$: Interacción entre orientación sexual/identidad de género y nacionalidad.  
+
+
+**3. Función de enlace:** El componente sistemático se vincula al componente aleatorio mediante la función de enlace logit, transformando $p_i$ en el logaritmo del $odds$:
+
+$$
+\text{logit}(p_i) = \ln\left(\frac{p_i}{1-p_i}\right) = \eta_i
+$$  
+
+
+**Ecuación del modelo**
+
+El modelo completo queda formalizado de la siguiente manera:
+
+$$
+\begin{aligned}
+\ln\left(\frac{p_i}{1-p_i}\right) = \beta_0 + \beta_1 \text{LGBT}_i + \beta_2 \text{educacion}_i+ \beta_3 \text{nacionalidad}_i + \beta_4 (\text{LGBT}_i \times \text{nacionalidad}_i)
+\end{aligned}
+$$  
+
+
+Todos los análisis fueron realizados usando la función _stats v3.6.2 glm (Fitting Generalized Linear Models)_ del software R versión 4.1.3.
+
+
+# Resultados
+
+
+En la Tabla \@ref(tab:table2) se muestran los resultados del modelo de regresión logística estimado incluyendo las variables de control. Se optó por utilizar el Modelo 5 en vez de uno menos complejo (i.e. sin controles, como el Modelo 4) debido a que presenta mejores indicadores de bondad ajuste a los datos.
+
+```{r table2, results='asis'}
+
+ccoef <- list(
+  "(Intercept)" = "Intercepto",
+   lgbtLGBT  = "LGBT (Ref.= No LGBT)",
+  "n_educBásica Incompleta" = "Básica incompleta",
+  "n_educBásica Completa" = "Básica completa",
+  "n_educMedia Incompleta" = "Media incompleta",   
+  "n_educMedia Completa"  = "Media completa",
+  "n_educSuperior Incompleta" = "Superior incompleta",      
+  "n_educSuperior Completa" = "Superior completa",
+  "nacionalidadNo chileno"  = "Nacionalidad no chilena (Ref.= Chilena)",         
+  "lgbtLGBT:nacionalidadNo chileno" = "LGBT x Nacionalidad no chilena",
+  "sexoMujer" = "Mujer (Ref. = Hombre)",
+  edad = "Edad",
+  dau = "Ingresos",
+  "depen_gradoDependencia leve" = "Dependencia leve", 
+  "depen_gradoDependencia moderada" = "Dependencia moderadada",
+  "depen_gradoDependencia severa" = "Dependencia severa",        
+  "disc_wgCon discapacidad" = "Tiene discapacidad (Ref. = No tiene)"
+  )
+
+texreg::texreg(list(m1, m2, m3, m4, m5),
+               custom.model.names = c("Modelo 1", "Modelo 2", "Modelo 3", "Modelo 4", "Modelo 5"),
+               caption = paste("(\\#tab:table2)","Modelos de regresión logística para la probabilidad de asistir a centros de salud"),
+               stars = c(0.05, 0.01, 0.001),
+               custom.coef.map = ccoef,
+               groups = list("Nivel educacional (Ref.= Sin Ed. Formal)" = 3:8,
+                            "Grado dependencia (Ref. = Sin dependencia)" = 13:15),
+               custom.note = "\\item Nota: Celdas contienen coeficientes de regresión con errores estándares entre paréntesis. %stars. \\\\ \\item Fuente: elaboración propia con datos de CASEN 2022 (n = 17.226)",
+               threeparttable = T,
+               leading.zero = T,
+               float.pos = "h!",
+               use.packages = F,
+               booktabs = T,
+               scalebox = 0.8)
+
+```
+
+
+
+En relación con la orientación sexual, los resultados sugieren que el efecto de ser LGBTQ+ sobre la probabilidad de asistir a centros de salud es positivo pero estadísticamente no significativo ($\beta$ = 0.14, $p$ > 0.05). En detalle, controlando por las demás variables, las log-odds de quienes son LGBTQ+ son 0.14 unidades mayores en comparación a quienes no son LGBTQ+, aunque esta relación no es estadísticamente significativa. Este coeficiente se puede convertir en un Odds Ratio ($OR$) mediante la exponenciación, resultando en un valor de 1.15  ($e^{0.14} \approx 1.15$). Esto indica que, en promedio, las chances de que una persona LGBTQ+ asista a un centro de salud son 1.15 veces mayores (un 15% más altas) que las de una persona no LGBTQ+, aunque esta diferencia no es estadísticamente significativa. Este hallazgo sugiere que las barreras para las personas LGBTQ+ pueden no manifestarse en la asistencia general a centros de salud, sino en otros aspectos, tal como podría ser la calidad de la atención, la discriminación o la falta de sensibilidad cultural en los servicios disponibles.
+
+
+Los resultados muestran que mayores niveles educativos no se asocian necesariamente con mayor probabilidad de asistir a centros de salud, aunque es un factor clave y estadísticamente significativo. Por ejemplo, las personas con educación superior completa ($\beta$ = 0.53, $p$ < 0.001, $OR$ = 1.73) tienen, en promedio, un 73% más de chances de asistir a centros de salud que las personas sin educación formal (categoría de referencia). Sin embargo, quienes tienen educación media completa ($\beta$= 0.65, $p$ < 0.001, $OR$ = 1.92) tienen un 92% de mayores chances promedio de asistir a centros de salud en comparación a quienes no tienen educación formal. Este hallazgo sugiere que el nivel educacional es un predictor relevante de la asistencia a centros de salud, pero que quienes tienen mayores niveles educacionales no necesariamente asisten más que quienes tienen niveles intermedios de educación.
+
+
+Por otro lado, la nacionalidad extranjera tiene un efecto negativo y estadísticamente significativo ($\beta$= -0.58,$p$ < 0.001) en la probabilidad de asistir a centros de salud. En detalle, ceteris paribus, quienes no son chilenos tienen, en promedio, changces un 44% menores de acudir a centros de salud  ($e^{0.14} \approx 0.56$) que quienes son de nacionalidad chilena. 
+
+Los resultados de la interacción entre tener identidad LGBTQ+ y ser de nacionalidad extranjera sugieren que tiene un efecto positivo pero estadísticamente no significativo en la probabilidad de asistir a centros de salud ($\beta$= 0.42, $p$ > 0.05). Específicamente, el coeficiente de interacción indica que, para las personas no chilenas, el efecto de ser LGBTQ+ en la probabilidad de asistir a centros de salud es 0.42 unidades mayor en las log-odds en comparación con las personas chilenas, pero dado que el valor p es mayor que 0.05, este hallazgo no es estadísticamente significativo al nivel del 95% de confianza. En términos de Odds Ratio, este coeficiente puede interpretarse como un aumento de las odds de asistir a un centro de salud de 1.52 veces ($OR$ = 1.52) para las personas no chilenas que se identifican como LGBTQ+, en comparación con aquellas no LGBTQ+, aunque esta diferencia no es estadísticamente significativa. Estos resultados sugieren que, aunque la interacción entre ser LGBTQ+ y no ser chileno parece indicar una mayor probabilidad de asistencia a centros de salud en este grupo, no existe evidencia suficiente para afirmar que esta relación sea significativa, lo que sugiere que otros factores podrían estar influyendo en el acceso a la salud para estos grupos específicos.
+
+
+```{r fig1, echo=FALSE, fig.cap='Efecto marginal de identidad LGBTQ+ moderado por el efecto de la nacionalidad', fig.align='center', out.width='80%'}
+
+marginaleffects::plot_slopes(m4, 
+                             variables = "lgbt", 
+                             condition = "nacionalidad", 
+                             conf_level = 0.95, 
+                             re.form = NA) +
+  geom_hline(yintercept = 0, 
+             color = "red", 
+             linetype = "dashed") +
+  labs(y = "Efecto marginal de LGBTQ+",
+       x = "Nacionalidad",
+      caption= "Fuente: elaboración propia con datos de CASEN 2022 (n = 17.226)",
+       title = NULL)
+
+```
+
+Para ilustrar de manera más clara el efecto marginal de ser LGBTQ+ sobre la probabilidad de asistir a centros de salud según la nacionalidad, se presenta un gráfico en la Figura \@ref(fig:fig1). En este gráfico, se muestra cómo varía este efecto para las personas de nacionalidad chilena y no chilena. Los resultados indican que el efecto marginal de ser LGBTQ+ sobre la probabilidad de asistencia a centros de salud es mayor para las personas de nacionalidad no chilena (estimación = 0.0623), en comparación con las personas chilenas (estimación = 0.0136). Sin embargo, aunque la estimación es más alta para las personas no chilenas, la relación no es estadísticamente significativa, ya que los intervalos de confianza para ambos grupos incluyen el valor 0 (IC 95%: para "Chileno" de -0.0139 a 0.041; para "No chileno" de -0.0393 a 0.164). Esto sugiere que no hay evidencia suficiente para afirmar que el efecto de ser LGBTQ+ en la probabilidad de asistencia a centros de salud difiere significativamente entre las personas chilenas y no chilenas.
+
+
+En cuanto a las variables de control, los resultados muestran que las mujeres ($\beta$ = 0.28, $p$ < 0.001) y las personas mayores ($\beta$ = 0.00, $p$ < 0.01) tienen una mayor probabilidad de asistir a centros de salud. Ser mujer se asocia positivamente con la asistencia a servicios médicos. La edad también desempeña un papel relevante, ya que las personas mayores tienden a requerir más servicios de salud debido al aumento de condiciones asociadas al envejecimiento. Sin embargo, las condiciones de salud como el grado de discapacidad y dependencia no son estadísticamente significativas en el acceso a la salud. En lo que respecta a los deciles de ingreso ($\beta$ = 0.03,$p$ < 0.01), se evidencia que existe un aumento en las probabilidades de asistencia a centros de salud a medida que aumenta el ingreso de las personas.
+
+
+```{r table3, results='asis'}
+
+aic <- AIC(m5)
+bic <- BIC(m5)
+r2_mcfadden <- as.numeric(PseudoR2(m5, which = "McFadden"))
+pcp <- performance::performance(m5)  %>% 
+  as_tibble() %>% 
+  select(PCP) %>% 
+  pull()
+  
+
+results_table <- data.frame(
+  Indicador = c("AIC", "BIC", "R2 McFadden", "PCP (%)"),
+  Valor = c(aic, bic, r2_mcfadden, pcp*100)
+)
+
+results_table %>% 
+ kableExtra::kable(format = "latex", 
+                    col.names = c("Indicador", "Valor"),
+                    row.names = F,
+                    booktabs = T, align = 'l',
+                    caption = paste("(\\#tab:table3)","Estadísticos de bondad de ajuste Modelo 5")) %>% 
+  kableExtra::kable_styling(latex_options = "hold_position", 
+                            position = "center") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F) %>% 
+  kableExtra::column_spec(1, width = "8cm") %>%
+  kableExtra::row_spec(0, bold = T)
+
+```
+
+En la Tabla \@ref(tab:table3) se muestran los estadísticos de bondad de ajuste para el Modelo 5. El análisis de bondad de ajuste revela un $R^2$ de McFadden de 0.008, lo que indica un bajo poder explicativo del modelo en términos de la proporción de variabilidad explicada en la probabilidad de asistencia a centros de salud. Este valor sugiere que los predictores incluidos tienen una capacidad limitada para predecir el resultado.
+
+Además, el AIC (11516.55) y el BIC (11648.37) reflejan que, aunque el modelo tiene un ajuste aceptable, la inclusión de predictores adicionales debería considerarse cuidadosamente para no incrementar innecesariamente la complejidad del modelo. La alta tasa de clasificación correcta (PCP = 81.3%) muestra un buen desempeño para clasificar correctamente los casos, aunque esto podría reflejar en parte un sesgo hacia la categoría más frecuente. En conjunto, estos indicadores sugieren que, si bien el modelo es funcional, su capacidad explicativa podría ser mejorada.
+
+
+```{r fig2, echo=FALSE, fig.cap='Bootstrap de coeficientes con regresión logística y modelo de probabilidad lineal', fig.align='center', out.width='105%'}
+
+p1 <- grid2 %>% 
+  ggplot(aes(x=lgbt,y=asistencia_hat, group=interaction(.id), colour=model)) +
+  geom_line(alpha=.05) +
+  scale_color_manual(values = c("#aba8fa", "#c71558")) +
+  facet_wrap(~model) +
+  labs(x = NULL,
+       y = "Predicted P(Asistir a centros de salud)") +
+  theme_ggdist() +
+  theme(legend.position = "none")
+
+
+p2 <- grid2 %>% 
+  ggplot(aes(x=nacionalidad,y=asistencia_hat, group=interaction(.id), colour=model)) +
+  geom_line(alpha=.05) +
+  scale_color_manual(values = c("#aba8fa", "#c71558")) +
+  facet_wrap(~model) +
+  labs(x = NULL,
+       y = "Predicted P(Asistir a centros de salud)") +
+  theme_ggdist() +
+  theme(legend.position = "none")
+  
+ggarrange(p1, p2, 
+          ncol = 1) +
+  theme(plot.caption = element_text(hjust = 1, size = 11)) +
+  labs(caption = "Fuente: elaboración propia en base a CASEN 2022 (n=17.226)")
+
+```
+
+
+
+Con el propósito de evaluar la robustez de las estimaciones, se aplicó un análisis Bootstrap con 500 iteraciones, utilizando valores predichos obtenidos a partir de modelos logístico y de probabilidad lineal (LPM). En la Figura \@ref(fig:fig2) se presentan las probabilidades promedio estimadas para el efecto de ser LGBTQ+ y la nacionalidad en ambos tipos de modelos.
+
+Los resultados indican que las estimaciones son consistentes entre configuraciones, ya que las probabilidades estimadas mantienen patrones similares en ambas aproximaciones. En detalle, las personas LGBTQ+ presentan una probabilidad estimada consistentemente mayor de acudir a centros de salud en comparación con las personas no LGBTQ+, según ambos modelos. Asimismo, las personas de nacionalidad no chilena muestran una probabilidad estimada sistemáticamente menor de asistir a centros de salud en relación con las personas chilenas. Estos hallazgos sugieren estabilidad en los patrones observados, independientemente de la elección del modelo y de la aproximación utilizada para la estimación.
+
+# Conclusiones
+
+Este estudio tenía por objetivo identificar cómo ciertos factores sociodemográficos e identitarios influyen en la asistencia a centros de salud por parte de la comunidad LGBTQ+ en Chile, tras el análisis de datos provenientes de CASEN 2022. 
+
+En relación con la hipótesis $H_1$, que planteaba una menor probabilidad de acceso a centros de salud por parte de personas LGBTQ+ en comparación con personas heterosexuales cisgénero, los resultados indican que este efecto no es estadísticamente significativo cuando ser parte de la comunidad LGBTQ+ es considerado como único factor explicativo. Esto sugiere que, con los datos disponibles, los elementos discriminatorios que la literatura ha identificado como barreras al acceso no se manifiestan de manera directa al analizar esta población en su conjunto.
+
+Por otro lado, respecto a la hipótesis $H_2$, que vinculaba un menor nivel educativo con una menor probabilidad de asistencia a centros de salud, los análisis reflejan que la educación aumenta la probabilidad de acceso a estos servicios, aunque no de manera proporcional a los niveles educativos alcanzados. En términos específicos, no se observa un incremento constante en la asistencia a medida que se eleva el nivel educativo. Sin embargo, se confirma el papel de la educación como un factor relevante para explicar el acceso a la atención médica [@fletcher2009higher; @cabieses2020health].
+
+Finalmente, respecto a la hipótesis $H_3$, que proponía que las personas LGBTQ+ de nacionalidad distinta a la chilena tendrían menor probabilidad de asistir a centros de salud en comparación con las personas LGBTQ+ chilenas, los resultados muestran que, aunque la interacción entre ser LGBTQ+ y no ser chileno podría sugerir una mayor probabilidad de asistencia, esta relación no alcanza significancia estadística. Esto indica la existencia de otros factores contextuales o estructurales que podrían estar influyendo en el acceso a la atención médica para este grupo en particular.
+
+En conclusión, los análisis realizados permiten dar cuenta que no se puede afirmar que exista un acceso diferenciado a la salud entre personas heterosexuales cisgénero y personas LGBTQ+, al menos con los datos de la encuesta CASEN 2022. Sin embargo, esto da cuenta de otros factores significativos, tal como lo son la educación y la nacionalidad y, la necesidad de aplicar enfoques interseccionales. Por lo que estas conclusiones abren las puertas para estudiar el fenómeno desde otras perspectivas, ya sean metodológicas o teóricas, con el fin de identificar los aspectos que podrían influir (o no) en el acceso a la salud de personas LGBTQ+ en Chile.  
+
+
+# Referencias
+
+::: {#refs}
+:::
+
+\pagebreak
+
+# Código de R
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```

@@ -1,0 +1,570 @@
+---
+title: |
+ | \vspace{5cm} Trabajo N°2
+subtitle: |
+ Análisis de Datos Categóricos - SOL3070
+date: "`r Sys.setlocale('LC_TIME', 'es_ES.UTF-8'); format(Sys.Date(), '%A %d, %B %Y')`"
+author: |
+ | Estudiante [Andreas Laffert](mailto:alaffertt@estudiante.uc.cl)
+ | Profesor Mauricio Bucca
+ | Ayudante Roberto Cantillan
+ | \vspace{8cm}
+output:
+  bookdown::pdf_document2:
+    template: null
+    toc: false
+    keep_tex: true
+    number_sections: false
+#bibliography: ../input/bib/magister.bib     
+#csl: ../input/bib/apa6.csl    
+linkcolor: DarkSlateBlue
+urlcolor: DarkSlateBlue
+linestretch: '1.15'
+link-citations: yes
+fontsize: 12pt
+papersize: a4
+geometry: "left=2.54cm,right=2.54cm,top=2.54cm,bottom=2.54cm"
+lang: en
+fig-height: 4
+fig-width: 7.5
+header-includes:
+  - \usepackage{titling}
+  - \pretitle{\begin{center}\LARGE\includegraphics[width=7cm]{../img/logo_isuc.png}\\[\bigskipamount]}
+  - \posttitle{\end{center}}
+  - \usepackage{times}           
+  - \usepackage{caption}
+  - \usepackage{floatrow} 
+  - \usepackage{float}
+  - \floatsetup[figure]{capposition=top}
+  - \floatsetup[table]{capposition=top}
+  - \floatplacement{figure}{H}
+  - \floatplacement{table}{h}
+  - \usepackage{graphicx}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{fancyhdr}
+  - \fancyhead{} 
+  - \usepackage{threeparttable}
+editor_options: 
+  chunk_output_type: console
+---
+
+\pagebreak
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,
+                      warning = F,
+                      error = F, 
+                      message = F) 
+```
+
+```{r paquetes, include=FALSE}
+if (! require("pacman")) install.packages("pacman")
+
+pacman::p_load(tidyverse, 
+               sjmisc, 
+               naniar,
+               here,
+               marginaleffects,
+               sjPlot,
+               ggeffects,
+               kableExtra,
+               rio,
+               nnet,
+               texreg,
+               ggdist)
+
+options(scipen=999)
+rm(list = ls())
+```
+
+```{r funciones, include=FALSE}
+
+options(knitr.kable.NA = "")
+options(knitr.table.format="latex")
+
+```
+
+```{r datos, include=FALSE}
+db <- rio::import(file = "https://github.com/mebucca/cda_soc3070/raw/refs/heads/master/homework/t_2/wiki_chileans.csv") 
+
+names(db)
+glimpse(db)
+```
+
+```{r procesamiento, include=FALSE}
+
+# seleccionar ----
+
+db <- db %>% 
+  sjlabelled::remove_all_labels() %>% 
+  as_tibble()
+ 
+# filtrar: no ----- 
+
+# recodificar y transformar ----
+
+# politico
+sjmisc::frq(db$categoria)
+
+db$categoria <- factor(db$categoria, 
+                       levels = c("Otro", "Cultura & Ciencia", "Política", "Deporte"),
+                       labels = c("Otro", "Cultura & Ciencia", "Política", "Deporte"))
+
+
+# sexo
+frq(db$genero)
+
+db$genero <- car::recode(db$genero, 
+                      recodes= c("'femenino'='Femenino';'masculino'='Masculino'"),
+                      levels = c("Femenino","Masculino"),
+                      as.factor = T)
+
+# edad
+sjmisc::descr(db$agno_nacimiento)
+frq(db$agno_nacimiento)
+
+db$agno_nacimiento <- as.numeric(db$agno_nacimiento)
+
+# casos perdidos -----
+
+colSums(is.na(db))
+
+n_miss(db)
+
+prop_miss(db)*100
+
+miss_var_summary(db)
+
+miss_var_table(db)
+
+db <- na.omit(db)
+
+```
+
+# Enunciado I: Regresión Logística Multinomial
+
+1. Utiliza regresión logística multinomial para modelar la probabilidad de que una persona con biografía en Wikipedia pertenezca a una de las siguientes cuatro categorías de la vida pública: "Cultura & Ciencia", "Política", "Deporte", u "Otro", en función del género y el año de nacimiento (sin interacción). Escribe la ecuación de regresión correspondiente a este modelo y presenta un `summary()` de los resultados y utiliza "Otro" como la categoría de referencia en la variable dependiente.
+
+
+Se estima un modelo logístico multinomial para predecir la probabilidad de que una persona con biografía en Wikipedia pertenezca a alguna de las cuatro categorías de vida pública, en función del género y año de nacimiento. Se utiliza el valor "Otro" como categoría de referencia en la variable dependiente. La ecuación de regresión correspondiente es:
+
+$$
+\log\left(\frac{P(\text{categoria} = j)}{P(\text{categoria} = \text{Otro})}\right) = \beta_{0j} + \beta_{1j} \cdot \text{género} + \beta_{2j} \cdot \text{año nacimiento}
+$$
+
+Donde cada conjunto de coeficientes modela las log-odds de pertenecer a la categoría $j$ en comparación con la categoría de referencia ("Otro").
+
+
+Implementación en R:
+
+
+```{r echo=TRUE, results='asis'}
+m1 <- multinom(categoria ~ genero + agno_nacimiento, 
+               trace=F, data=db)
+summary(m1)
+```
+
+
+a) Interpreta los coeficientes asociados a `hombre-Política` y `agno_nacimiento-Deporte` en términos de log-odds.
+
+**Interpretación de los coeficientes**
+
+`hombre-Política`: El efecto de ser hombre en la probabilidad de pertenecer a la categoría "Política" en lugar de "Otro" en la vida pública es negativo y estadísticamente significativo ($\beta$ = -0.33, $p$ < 0.001). Este coeficiente muestra el cambio en las log-odds de pertenecer a la categoría "Política" en comparación con "Otro" para los hombres respecto a las mujeres. En detalle, este resultado sugiere que, controlando por el año de nacimiento, las log-odds de que un hombre pertenezca a la categoría "Política" en lugar de "Otro" son 0.33 unidades más bajas que las de una mujer, siendo esta asociación estadísticamente signiticativa a un 99% de confianza. 
+
+
+`agno_nacimiento-Deporte`: El efecto del año de nacimiento en la probabilidad de pertenecer a la categoría "Deporte" en comparación con "Otro" es positivo y estadísticamente significativo ($\beta$ = 0.06, $p$ < 0.001). Este coeficiente representa el cambio en las log-odds de pertenecer a la categoría "Deporte" respecto a "Otro" por cada año adicional en el año de nacimiento, mostrando que las personas más jóvenes tienen mayor probabiliad de estar en "Deporte" que en "Otro". En concreto, esto sugiere que, controlando por género, un aumento de un año en el año de nacimiento incrementa las log-odds de pertenecer a la categoría "Deporte" en lugar de "Otro" en 0.06 unidades.
+
+
+b) Expresa las ecuaciones y calcula las odds de pertenecer a la categoría "Política" de un hombre y de una mujer nacidos en el año 1950. Explica cómo estas odds se relacionan con la cantidad obtenida al exponenciar el coeficiente `hombre-Política`.
+
+
+En base al Modelo 1 empleado en a), para calcular las probabilidades esperadas de que un hombre y una mujer nacidos en 1950 sean políticos, las ecuaciones serían:
+
+Para hombre:
+
+$$
+\log\left(\frac{P(\text{Política})}{P(\text{Otro})}\right) = \beta_{0j} + \beta_{1j} \cdot \text{(género = 1}) + \beta_{2j} \cdot (\text{año nacimiento}=1950) 
+$$
+
+Cuya resolución sería:
+
+$$
+\log\left(\frac{P(\text{Política})}{P(\text{Otro})}\right) = -4.56 + 1 \cdot (-0.33) + 1950 \cdot 0.00 = -4.89
+$$
+
+En donde las odds serían = $e^{-4.89}$
+
+
+Para mujer:
+
+$$
+\log\left(\frac{P(\text{Política})}{P(\text{Otro})}\right) = \beta_{0j} + \beta_{1j} \cdot \text{(género = 0}) + \beta_{2j} \cdot (\text{año nacimiento}=1950) 
+$$
+
+Cuya resolución sería:
+
+$$
+\log\left(\frac{P(\text{Política})}{P(\text{Otro})}\right) = -4.56 + 0 \cdot (-0.33) + 1950 \cdot 0.00 = -4.56
+$$
+
+En donde las odds serían = $e^{-4.56}$
+
+Como se demostró anteriormente, el efecto de ser hombre en la probabilidad de pertenecer a la categoría "Política" (en lugar de "Otro") es de -0.33 unidades en comparación con las mujeres. En terminos de odds, la razón de probabilidad de que un hombre esté en "Política" son el 72% de las odds de una mujer ($e^{-0.33} \approx 0.72$). Esto sufiere que ser hombre está asociado con una reducción del 28%  en las odds de estar en "Política" frente a "Otro", en comparación con ser mujer.
+
+c) Calcula la odds ratio de pertener a la categoría "Política" en vez de "Deporte" entre hombres y mujeres.
+
+
+Para determinar las **odds ratio (OR)** entre hombres y mujeres de pertenecer a la categoría "Política" en lugar de "Deporte", debemos primero obtener la diferencia entre sus coeficientes de género: 
+
+
+* $\beta_{género-política} =  -0.33$
+
+* $\beta_{género-deporte} =  1.23$
+
+
+Y la diferencia sería:
+
+$$
+e^\text{-0.33 - 1.23}= e^\text{-1.56}
+$$
+Y las **OR** serían:
+$$
+e^\text{-1.56} \approx 0.209
+$$
+
+
+Así, este resultado indica que las odds de pertenecer a la categoría "Política" en lugar de "Deporte" para los hombres son aproximadamente el 21% de las odds de una mujer, sugierendo que existe una probabilidad menor para los hombres en esta relación entre categorías. Otra manera de expresarlo es que las odds de pertenecer a la categoría "Política" en lugar de "Deporte" para los hombres son aproximadamente un 79% menores (1-0.21) en comparación con las mujeres, manteniendo constante el año de nacimiento.
+
+d) Expresa las ecuaciones y calcula la probabilidad de pertenecer a cada categoría para una mujer nacida en 1950.
+
+
+Para estimar la probabilidad de que una mujer nacida en 1950 pertenezca a cada categoría hay que usar la ecuación de las log-odds y transformarlas en probabilidades.
+
+
+- **Cultura & Ciencia:** 
+$$\log\left(\frac{P(\text{Cultura y Ciencia})}{P(\text{Otro})}\right) = -27.81 + 0 \cdot (-1.22) + 1950 \cdot (0.02) = 11.19
+$$
+
+- **Política:** 
+$$\log\left(\frac{P(\text{Política})}{P(\text{Otro})}\right) = -4.56 + 0 \cdot (-0.33) + 1950 \cdot (0.00) = -4.56
+$$
+
+- **Deporte:** $$
+\log\left(\frac{P(\text{Deporte})}{P(\text{Otro})}\right) = -115.28 + 0 \cdot (1.23) + 1950 \cdot (0.06) = 1.72
+$$
+
+Ahora, exponenciamos los resultados y luego los normalizamos en un rango entre [0,1] mediante la fórmula:
+
+$P(\text{categoría}) = \frac{\text{odds de categoría}}{\sum \text{odds de todas las categorías}}$
+
+
+i. **Cultura & Ciencia**: $\text{odds}= e^{11.19}$
+
+Implementación en R:
+
+
+```{r echo=TRUE, results='asis'}
+
+odds_cul_cien <- exp(11.19)
+
+probabilidad_cul_cien <- odds_cul_cien / (1 + odds_cul_cien)
+
+probabilidad_cul_cien
+```
+
+
+ii. **Política**: $\text{odds}= e^{-4.56}$
+
+Implementación en R:
+
+
+```{r echo=TRUE, results='asis'}
+
+odds_poli <- exp(-4.56)
+
+probabilidad_poli <- odds_poli / (1 + odds_poli)
+
+probabilidad_poli
+```
+
+iii. **Deporte**: $\text{odds}= e^{1.72}$
+
+Implementación en R:
+
+
+```{r echo=TRUE, results='asis'}
+
+odds_dep <- exp(1.72)
+
+probabilidad_dep <- odds_dep / (1 + odds_dep)
+
+probabilidad_dep
+```
+
+
+iv. **Otro (categ. referencia)**: $\text{odds}= e^{1}$
+
+Implementación en R:
+
+
+```{r echo=TRUE, results='asis'}
+
+odds_otro <- exp(1)
+
+probabilidad_otro <- odds_otro / (1 + odds_otro)
+
+probabilidad_otro
+```
+
+
+
+
+e) ¿Cuál es *efecto marginal* de año de nacimiento la probabilidad de que una mujer nacida en 1950 se encuentre en la categoría "Política"?
+
+En la Tabla \@ref(tab:table1) se muestran los efectos marginales del año de nacimiento sobre la probabilidad de que una mujer nacida en 1950 sea "Política" en lugar de "Otro." Los resultados muestran que el efecto marginal estimado del año de nacimiento es negativo: manteniendo constantes los demás factores, por cada año adicional, los log-odds de ser política para una mujer nacida en 1950 disminuyen en 0.0018 puntos. Esto sugiere que a mayor año de nacimiento (i.e. personas más jóvenes), la probabilidad de pertenecer a la categoría "Política" es menor. 
+
+Implementación en R: 
+
+```{r table1, echo=TRUE}
+newdata <- data.frame(
+  genero = c("Masculino", "Femenino"),
+  agno_nacimiento = 1950
+)
+
+marginaleffects::avg_slopes(model = m1, 
+                            variables = "agno_nacimiento",
+                            by = "genero",
+                            conf_level = .95,
+                            newdata = newdata) %>% 
+  as_tibble() %>% 
+  dplyr::mutate(
+    estimate = round(estimate, 4),
+    ic_95 = paste0("[", round(conf.low, 4), ",", 
+                   round(conf.high, 4), "]")) %>% 
+  dplyr::select(group, genero, contrast, estimate, std.error, ic_95) %>%
+  filter(group == "Política") %>% 
+  kableExtra::kable(format = "latex", 
+                    col.names = c("Categoría", "Género", "Contraste", 
+                                  "Estimado", "ES", "IC 95%"),
+                    booktabs = T, 
+                    align = 'c',
+                    caption = paste("(\\#tab:table1)",
+                                    "Efecto marginal de año de nacimiento sobre $p$ de que una mujer nacida en 1950 sea política")) %>% 
+  kableExtra::kable_styling(latex_options = "hold_position", 
+                            position = "center", 
+                            bootstrap_options = c("striped", "hover", 
+                                                  "condensed", "responsive"), 
+                            full_width = F) %>% 
+  column_spec(1, width = "2cm",) %>%
+  row_spec(0, bold = T)
+```
+
+
+
+
+
+# Enunciado II: Regresión Poisson
+
+Usando los datos de infidelidad, estima un modelo Poisson para la tasa de infidelidad a lo largo del matrimonio.
+
+```{r,  include=TRUE, echo=TRUE, warning=FALSE, message=FALSE}
+#library(devtools)
+#install_github("sbgraves237/Ecdat")
+library(Ecdat)
+data(Fair)
+affairsdata <- Fair %>% as_tibble()
+```
+
+-   La variable `nbaffairs` mide la cantidad de relaciones extra-matrimoniales que ha tenido una persona. La variable `ym` mide los años que una persona ha estado casada.
+
+Se estima un modelo de regresión Poisson para estimar la tasa de infidelidad en función de la duración o años del matrimonio.
+
+Implementación en R:
+
+```{r table2, echo=TRUE, results='asis'}
+
+m2 <- glm(nbaffairs ~ ym, family=poisson(link="log"), data = affairsdata)
+
+texreg::texreg(l = m2,
+               custom.model.names = c("Modelo 2"),
+               caption = paste("(\\#tab:table2)","Modelo Poisson para tasa de infelidad según tiempo del matrimonio"),
+               stars = c(0.05, 0.01),
+               custom.note = "\\item Nota: Celdas contienen coeficientes de regresión con errores estándares entre paréntesis. %stars",
+               threeparttable = T,
+               leading.zero = T,
+               float.pos = "h!",
+               use.packages = F,
+               booktabs = TRUE,
+               scalebox = 1)
+
+```
+
+
+
+a)   Modela la cantidad de relaciones extra-matrimoniales que ha tenido una persona como función de su genero (`age`), su felicidad en el matrimonio (`rate`) y la interacción entre ambas.
+
+Se estima un modelo de regresión Poisson para estimar la cantidad de relaciones extra-matrimoniales en función género, la felicidad en el matrimonio y la interacción entre estas covariables.
+
+Implementación en R:
+
+```{r table3, echo=TRUE, results='asis'}
+affairsdata$rate <- as.factor(affairsdata$rate)
+
+m3 <- glm(nbaffairs ~ sex + rate + sex*rate, family=poisson(link="log"), data = affairsdata)
+
+texreg::texreg(l = m3,
+               custom.model.names = c("Modelo 3"),
+               caption = paste("(\\#tab:table3)","Modelo Poisson para cantidad de relaciones extra-matrimoniales"),
+               stars = c(0.05, 0.01),
+               custom.note = "\\item Nota: Celdas contienen coeficientes de regresión con errores estándares entre paréntesis. %stars",
+               threeparttable = T,
+               leading.zero = T,
+               float.pos = "h!",
+               use.packages = F,
+               booktabs = TRUE,
+               scalebox = 1)
+
+```
+
+
+
+b) Interpreta el efecto multiplicativo de la variable felicidad en el matrimonio sobre la tasa de infidelidad de los hombres.
+
+Se estima un modelo de regresión Poisson para la tasa de infidelidad en función de la interacción entre el género y la felicidad en el matrimonio, incluyendo un offset de años de matrimonio.
+
+Implementación en R:
+
+```{r table4, echo=TRUE, results='asis'}
+m4  <- glm(nbaffairs ~ sex * rate, family = poisson(link = "log"), 
+          offset = log(ym), data = affairsdata)
+
+texreg::texreg(l = m4,
+               custom.model.names = c("Modelo 4"),
+               caption = paste("(\\#tab:table4)","Modelo Poisson para cantidad de relaciones extra-matrimoniales con offset de años de matrimonio"),
+               stars = c(0.05, 0.01),
+               custom.note = "\\item Nota: Celdas contienen coeficientes de regresión con errores estándares entre paréntesis. %stars",
+               threeparttable = T,
+               leading.zero = T,
+               float.pos = "h!",
+               use.packages = F,
+               booktabs = TRUE,
+               scalebox = 1)
+
+```
+
+
+Para hombres, el efecto de cada categoría de felicidad en el matrimonio ($rate_j$) sobre la tasa de infidelidad es:
+
+$$
+e^{\beta_{ratej}+\beta_{sexmale:ratej}}
+$$
+
+Esto representa cómo cambia la tasa de infidelidad en hombres respecto a la categoría base (rate1).
+
+**Categoría rate2 (segundo nivel de felicidad):** 
+
+
+$$
+\text{Efecto multiplicativo} = e^{(-0.1414+1.1328)} = e^{(0.9914)} \approx 2.69
+$$
+
+
+**Categoría rate3 (tercer nivel de felicidad):** 
+
+
+$$
+\text{Efecto multiplicativo} = e^{(-0.5943+0.2396)} = e^{(-0.3547)} \approx 0.70
+$$
+**Categoría rate4 (cuarto nivel de felicidad):** 
+
+
+$$
+\text{Efecto multiplicativo} = e^{(-1.2680+1.3039)} = e^{(0.0359)} \approx 1.04
+$$
+
+**Categoría rate5 (quinto nivel de felicidad):** 
+
+
+$$
+\text{Efecto multiplicativo} = e^{(-0.9655+0.1718)} = e^{(-0.7937)} \approx 0.45
+$$
+
+
+**Interpretación**
+
+Los hombres cuya felicidad en el matrimonio es igual a 2 tienen una tasa de infidelidad 2.69 veces mayor que los hombres en la categoría rate1. Sin embargo, a medida que aumenta la felicidad en el matrimonio, la tasa de infidelidad disminuye: en rate3, rate4, y rate5, la tasa de infidelidad disminuye gradualmente, siendo más baja para los niveles más altos de felicidad marital (rate5: 55% menor que rate1). Con todo, estos resultados sugieren una relación negativa y estadísticamente significativa entre la felicidad en el matrimonio y la probabilidad de infidelidad de los hombres.
+
+
+c) Estima la cantidad esperada de relaciones extra-matrimoniales para una mujer en un matrimonio infeliz (`rate`=2) de 20 años de duración.
+
+Para estimar la cantidad esperada de relaciones extra-matrimoniales en el caso solicitado, utilizamos el modelo ajustado y evaluamos la predicción para una mujer en un matrimonio infeliz (rate=2) con 20 años de duración (ym=20).
+
+La fórmula del modelo Poisson es:
+
+$$
+\log(\text{tasa esperada}) = \beta_0 + \beta_{rate2} + \log\text{(ym)}
+$$
+
+Implementación en R:
+
+```{r, echo=TRUE}
+newdata <- data.frame(
+  sex = "female",
+  rate = "2",
+  ym = 20
+)
+
+predict(m4, 
+        newdata = newdata, 
+        type = "response")
+```
+
+Los resultados sugiren que, para una mujer en un matrimonio infeliz (`rate`= 2) y con una duración de 20 años de matrimonio, tendría una cantidad de 6.43 relaciones extramatrimoniales, en promedio. 
+
+
+d) Genera un gráfico como el siguiente, que muestre la cantidad esperada de relaciones extra-matrimoniales para hombres y mujeres en matrimonios de distintos niveles de felicidad (rate = 1 ... 5), considerando una duración de 20 años.
+
+Implementación en R:
+
+```{r fig1, echo=TRUE, fig.cap='Cantidad esperada de relaciones extra-matrimoniales según género, felicidad en el matrimonio y duración de 20 años', fig.align='center', out.width='100%'}
+
+
+affairsdata$rate <- as.numeric(affairsdata$rate)
+
+m5 <- glm(nbaffairs ~ sex * rate + ym, data = affairsdata, family = poisson())
+
+newdata <- expand.grid(sex = c("female", "male"), 
+                       rate = 1:5, 
+                       ym = 20)
+
+pred <- predict(m5, newdata, type = "response")
+
+newdata %>% 
+  mutate(sex = if_else(sex == "female", "Femenino", "Masculino")) %>% 
+  ggplot(aes(x = rate, y = pred, color = sex)) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2) +
+  scale_y_continuous(breaks = seq(0,10, by = 1)) +
+  scale_color_brewer(type = "qual") +
+   labs(x = "Nivel de felicidad en el matrimonio", 
+       y = "Cantidad esperada de relaciones extra-matrimoniales", 
+       color = "Género") +
+  theme_ggdist() +
+  theme(legend.position = "top")
+  
+```
+
+\pagebreak
+
+# Código de R
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
